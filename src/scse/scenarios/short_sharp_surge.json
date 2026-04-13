@@ -1,0 +1,21 @@
+{
+  "name": "short_sharp_surge",
+  "description": "Sudden 3x demand spike for 12 weeks starting at week 12, simulating a short intense conflict",
+  "time_horizon": 52,
+  "demand": {
+    "baseline_multiplier": 1.0,
+    "surge_multiplier": 3.0,
+    "surge_trigger_week": 12,
+    "surge_duration_weeks": 12,
+    "post_surge_multiplier": 1.5
+  },
+  "suppliers": {
+    "disruption_probability": 0.05,
+    "forced_disruptions": {}
+  },
+  "logistics": {
+    "transit_time_multiplier": 1.0,
+    "transit_disruption_start_week": null,
+    "transit_disruption_end_week": null
+  }
+}

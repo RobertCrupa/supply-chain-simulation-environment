@@ -1,0 +1,21 @@
+{
+  "name": "prolonged_attritional_conflict",
+  "description": "Sustained 2x demand over 44 weeks with moderate logistics degradation — attritional warfare scenario",
+  "time_horizon": 78,
+  "demand": {
+    "baseline_multiplier": 1.0,
+    "surge_multiplier": 2.0,
+    "surge_trigger_week": 8,
+    "surge_duration_weeks": 44,
+    "post_surge_multiplier": 1.5
+  },
+  "suppliers": {
+    "disruption_probability": 0.05,
+    "forced_disruptions": {}
+  },
+  "logistics": {
+    "transit_time_multiplier": 1.2,
+    "transit_disruption_start_week": 8,
+    "transit_disruption_end_week": 52
+  }
+}

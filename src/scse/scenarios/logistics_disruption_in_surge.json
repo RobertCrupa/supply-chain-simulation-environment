@@ -1,0 +1,21 @@
+{
+  "name": "logistics_disruption_in_surge",
+  "description": "2x surge compounded by doubled transit times for 18 weeks, simulating port and transport delays",
+  "time_horizon": 52,
+  "demand": {
+    "baseline_multiplier": 1.0,
+    "surge_multiplier": 2.0,
+    "surge_trigger_week": 10,
+    "surge_duration_weeks": 20,
+    "post_surge_multiplier": 1.5
+  },
+  "suppliers": {
+    "disruption_probability": 0.03,
+    "forced_disruptions": {}
+  },
+  "logistics": {
+    "transit_time_multiplier": 2.0,
+    "transit_disruption_start_week": 12,
+    "transit_disruption_end_week": 30
+  }
+}

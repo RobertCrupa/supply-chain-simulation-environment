@@ -1,0 +1,15 @@
+{
+  "name": "defence_surge_profile",
+  "description": "UK defence prime contractor surge simulation — Albion Defence Systems (fictional)",
+  "modules": [
+    "scse.modules.selection.defence_programme_selection.DefenceProgrammeSelection",
+    "scse.modules.topology.defence_network.DefenceNetwork",
+    "scse.modules.customer.defence_mod_demand.MODDemandGenerator",
+    "scse.modules.fulfillment.defence_priority_fulfillment.DefencePriorityFulfillment",
+    "scse.modules.buying.defence_inventory_policy.DefenceInventoryPolicy",
+    "scse.modules.vendor.defence_constrained_supplier.DefenceConstrainedSupplier"
+  ],
+  "metrics": [
+    "scse.metrics.defence_surge_metrics.DefenceSurgeMetrics"
+  ]
+}

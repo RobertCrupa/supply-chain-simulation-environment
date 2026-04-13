@@ -32,7 +32,8 @@ class SupplyChainEnvironment:
                  start_date = '2019-01-01', # simulation start date
                  time_increment = 'daily',  # timestep increment
                  time_horizon = 100,        # timestep horizon
-                 asin_selection = 1):       # how many / which asins to simulate
+                 asin_selection = 1,        # how many / which asins to simulate
+                 **kwargs):                 # additional run parameters (scenario, output_dir, etc.)
 
         self._program_start_time = time.time()
         self._miniscot_time_profile = {}
@@ -41,15 +42,20 @@ class SupplyChainEnvironment:
         self._time_increment = time_increment
         self._time_horizon = time_horizon
 
+        # Build the full run_parameters dict passed to all modules
+        run_params = dict(
+            simulation_seed=simulation_seed,
+            start_date=start_date,
+            time_increment=time_increment,
+            time_horizon=time_horizon,
+            asin_selection=asin_selection,
+            **kwargs
+        )
+
         profile_config = load_profile(profile)
 
         # Invariant: order should not be relevant.
-        self._metrics = [instantiate_class(class_name,
-                                           simulation_seed = simulation_seed,
-                                           start_date = start_date,
-                                           time_increment = time_increment,
-                                           time_horizon = time_horizon,
-                                           asin_selection = asin_selection)
+        self._metrics = [instantiate_class(class_name, **run_params)
                          for class_name in profile_config['metrics']]
 
         # TODO For now, only a single metric module is supported.
@@ -58,12 +64,7 @@ class SupplyChainEnvironment:
                              "{} were specified.".format(len(self._metrics)))
         self._metrics = self._metrics[0]
 
-        self._modules = [instantiate_class(class_name,
-                                           simulation_seed = simulation_seed,
-                                           start_date = start_date,
-                                           time_increment = time_increment,
-                                           time_horizon = time_horizon,
-                                           asin_selection = asin_selection)
+        self._modules = [instantiate_class(class_name, **run_params)
                          for class_name in profile_config['modules']]
 
         current_program_time = time.time()
@@ -245,6 +246,8 @@ class SupplyChainEnvironment:
             state['date_time'] += datetime.timedelta(days=1)
         elif self._time_increment == 'hourly':
             state['date_time'] += datetime.timedelta(hours=1)
+        elif self._time_increment == 'weekly':
+            state['date_time'] += datetime.timedelta(weeks=1)
         else:
             raise ValueError("Unknown time increment arg".format(self._time_increment))
 
@@ -292,6 +295,10 @@ class SupplyChainEnvironment:
 
         shipments = edge_data['shipments']
         transit_time = edge_data['transit_time']
+
+        # Defence extension: allow lead time override from supplier module
+        if 'lead_time_override' in action:
+            transit_time = action['lead_time_override']
 
         shipment = {
             'id': uuid,
@@ -347,14 +354,31 @@ class SupplyChainEnvironment:
                             shipment, destination))
 
                     destination_data = G.nodes[destination]
+                    origin_data = G.nodes[origin]
+                    asin = shipment['asin']
+                    qty = shipment['quantity']
 
-                    # If warehouse, then update inventory
-                    inventory = destination_data.get('inventory')
-                    if inventory:
-                        inventory[shipment['asin']] += shipment['quantity']
+                    # Defence extension: if destination has component_inventory
+                    # and shipment is from a vendor/supplier, add to components
+                    component_inv = destination_data.get('component_inventory')
+                    if (component_inv is not None
+                            and origin_data.get('node_type') == 'vendor'):
+                        component_inv[asin] = component_inv.get(asin, 0) + qty
+                    # Standard: if warehouse, update inventory
+                    elif 'inventory' in destination_data and destination_data.get('inventory'):
+                        destination_data['inventory'][asin] = (
+                            destination_data['inventory'].get(asin, 0) + qty
+                        )
                     else:
-                        # Let's update a 'delivered' attribute so that we can debug it better.
-                        destination_data['delivered'] += shipment['quantity']
+                        # Customer node: update delivered counter
+                        destination_data['delivered'] = (
+                            destination_data.get('delivered', 0) + qty
+                        )
+                        # Defence extension: track deliveries by item
+                        if 'delivered_by_item' in destination_data:
+                            destination_data['delivered_by_item'][asin] = (
+                                destination_data['delivered_by_item'].get(asin, 0) + qty
+                            )
 
                     shipments.remove(shipment)
 
