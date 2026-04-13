@@ -7,3 +7,6 @@ __pycache__/
 
 # Build/test output
 build/
+
+# Runtime simulation logs
+src/scse/metrics/metrics_log.csv

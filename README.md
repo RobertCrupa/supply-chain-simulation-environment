@@ -26,3 +26,9 @@ TODO for opensource
 
 * Start the command-line application:
 - `miniscot`
+
+### Defence-prime surge simulation profile
+
+Use the built-in wartime surge profile to simulate synthetic demand shocks:
+
+- `miniscot start -profile defence_prime_war_surge_profile -horizon 60`
