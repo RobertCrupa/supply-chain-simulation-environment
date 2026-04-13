@@ -31,6 +31,11 @@ class DefencePriorityFulfillment(Agent):
     and become backlog for the next timestep.
     """
 
+    # Production capacity: limit per item to 2x the fair share.
+    # This allows some items to use more than their equal share of capacity
+    # while preventing any single item from monopolising the factory.
+    _PRODUCTION_HEADROOM_FACTOR = 2
+
     def __init__(self, run_parameters):
         pass
 
@@ -61,9 +66,8 @@ class DefencePriorityFulfillment(Agent):
 
             # Produce as many as capacity and components allow
             can_produce = min(component_inv, weekly_capacity - produced_this_week)
-            # Limit production to a reasonable batch size per item
             max_per_item = max(1, weekly_capacity // max(1, len(self._asin_list)))
-            produce_qty = min(can_produce, max_per_item * 2)
+            produce_qty = min(can_produce, max_per_item * self._PRODUCTION_HEADROOM_FACTOR)
 
             if produce_qty > 0:
                 # Consume components

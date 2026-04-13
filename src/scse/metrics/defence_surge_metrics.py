@@ -37,10 +37,13 @@ class DefenceSurgeMetrics:
     to its reward-collection logic.
     """
 
+    # Reward proxy parameters (simplified from retail cash model).
+    # These provide a scalar reward signal for the controller's reward loop.
+    # They are not intended as accurate defence cost models.
     _EXPEDITE_COST_PREMIUM = 0.5  # 50% premium on expedited units
-    _HOLDING_COST_PER_UNIT_WEEK = 100  # £ per unit per week
-    _UNIT_COST = 5
-    _UNIT_PRICE = 10
+    _HOLDING_COST_PER_UNIT_WEEK = 100  # £ per unit per week (proxy)
+    _UNIT_FULFILMENT_REWARD = 10  # reward per unit fulfilled
+    _UNIT_PROCUREMENT_COST = 5   # cost per unit procured
 
     def __init__(self, run_parameters):
         self._scenario_name = run_parameters.get('scenario', 'peacetime_baseline')
@@ -90,10 +93,10 @@ class DefenceSurgeMetrics:
         if action_type == 'outbound_shipment':
             self._timestep_fulfilled += quantity
             self._total_fulfilled += quantity
-            return self._UNIT_PRICE * quantity
+            return self._UNIT_FULFILMENT_REWARD * quantity
 
         elif action_type == 'inbound_shipment':
-            cost = self._UNIT_COST * quantity
+            cost = self._UNIT_PROCUREMENT_COST * quantity
             is_expedite = action.get('expedite', False)
             if is_expedite:
                 cost *= (1 + self._EXPEDITE_COST_PREMIUM)
