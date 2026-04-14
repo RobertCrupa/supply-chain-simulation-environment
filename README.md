@@ -110,6 +110,7 @@ These are planned for future phases. See `docs/defence-architecture-plan.md` for
 - [Gap Analysis](docs/defence-gap-analysis.md) - comparison of original vs defence model
 - [Architecture Plan](docs/defence-architecture-plan.md) - phased engineering plan
 - [Scenario Design](docs/scenario-design.md) - scenario definitions and parameters
+- [Simulation Engine Docs](docs/simulation/README.md) - runtime flow, complete inputs/outputs, and glossary
 
 ---
 
