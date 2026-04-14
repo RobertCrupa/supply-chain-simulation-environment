@@ -1,0 +1,21 @@
+{
+  "name": "peacetime_baseline",
+  "description": "Normal MOD demand, no disruptions — steady-state performance baseline",
+  "time_horizon": 52,
+  "demand": {
+    "baseline_multiplier": 1.0,
+    "surge_multiplier": 1.0,
+    "surge_trigger_week": null,
+    "surge_duration_weeks": 0,
+    "post_surge_multiplier": 1.0
+  },
+  "suppliers": {
+    "disruption_probability": 0.02,
+    "forced_disruptions": {}
+  },
+  "logistics": {
+    "transit_time_multiplier": 1.0,
+    "transit_disruption_start_week": null,
+    "transit_disruption_end_week": null
+  }
+}

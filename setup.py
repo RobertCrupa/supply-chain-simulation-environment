@@ -76,16 +76,13 @@ setup(
     # This is used for local deployment (outside of Brazil).
     # This needs to be updated manually as Config changes.
     install_requires = [
-        'numpy == 1.*',
-        'scipy == 1.*',
-        'pandas == 0.24.*',
-        'networkx == 2.*',
-        'cmd2 == 0.8.*',
-        'boto3 == 1.*',
-        's3fs == 0.1.*',
-        'docker == 3.7.*',
-        'requests == 2.*',
-        'gym == 0.17.0',
+        'numpy>=1.20',
+        'scipy>=1.7',
+        'pandas>=1.3',
+        'networkx>=2.6',
+        'cmd2>=2.0',
+        'requests>=2.25',
+        'gymnasium>=0.26',
     ],
     setup_requires=[
         'pytest-runner',

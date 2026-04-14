@@ -1,0 +1,26 @@
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+__pycache__/
+*.pyc
+
+# Test/coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Simulation output
+output/
+**/metrics_log.csv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
