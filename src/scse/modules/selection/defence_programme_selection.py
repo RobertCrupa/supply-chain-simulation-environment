@@ -56,6 +56,40 @@ DEFENCE_PROGRAMME_ITEMS = {
 }
 
 
+def get_runtime_programme_items(runtime_context):
+    """Return runtime programme items as a dict keyed by item ID.
+
+    Falls back to DEFENCE_PROGRAMME_ITEMS when runtime context is missing.
+    """
+    if not runtime_context:
+        return DEFENCE_PROGRAMME_ITEMS
+
+    runtime_items = runtime_context.get("programme_items")
+    if not isinstance(runtime_items, list) or len(runtime_items) == 0:
+        return DEFENCE_PROGRAMME_ITEMS
+
+    items = {}
+    for item in runtime_items:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        if not item_id:
+            continue
+        items[item_id] = {
+            "name": item.get("name", item_id),
+            "family": item.get("family", "Runtime"),
+            "base_weekly_demand": item.get("base_weekly_demand", 10),
+            "priority": item.get("priority", 3),
+            "unit_cost": item.get("unit_cost", 10000),
+            "critical_component": item.get("critical_component", item_id),
+        }
+
+    if len(items) == 0:
+        return DEFENCE_PROGRAMME_ITEMS
+
+    return items
+
+
 class DefenceProgrammeSelection(Env):
     """Provides the list of defence programme items to the simulation.
 
@@ -64,10 +98,12 @@ class DefenceProgrammeSelection(Env):
     """
 
     def __init__(self, run_parameters):
-        self._asin_selection = run_parameters.get('asin_selection', 'all')
+        self._asin_selection = run_parameters.get("asin_selection", "all")
+        self._runtime_context = run_parameters.get("runtime_context", {})
+        self._programme_items = get_runtime_programme_items(self._runtime_context)
 
     def get_name(self):
-        return 'asin_list'
+        return "asin_list"
 
     def get_context(self):
         """Return the list of programme item IDs as the 'asin_list' context.
@@ -75,12 +111,12 @@ class DefenceProgrammeSelection(Env):
         The existing framework uses 'asin' terminology throughout — we reuse
         this to maintain compatibility with the controller and network utilities.
         """
-        if self._asin_selection == 'all' or self._asin_selection is None:
-            return list(DEFENCE_PROGRAMME_ITEMS.keys())
+        if self._asin_selection == "all" or self._asin_selection is None:
+            return list(self._programme_items.keys())
         elif isinstance(self._asin_selection, list):
             return self._asin_selection
         elif isinstance(self._asin_selection, int):
-            items = list(DEFENCE_PROGRAMME_ITEMS.keys())
-            return items[:self._asin_selection]
+            items = list(self._programme_items.keys())
+            return items[: self._asin_selection]
         else:
-            return list(DEFENCE_PROGRAMME_ITEMS.keys())
+            return list(self._programme_items.keys())

@@ -21,7 +21,10 @@ from scse.api.network import (
     get_asin_inventory_in_network,
     get_asin_inventory_on_all_inbound_arcs,
 )
-from scse.modules.selection.defence_programme_selection import DEFENCE_PROGRAMME_ITEMS
+from scse.modules.selection.defence_programme_selection import (
+    DEFENCE_PROGRAMME_ITEMS,
+    get_runtime_programme_items,
+)
 from scse.scenarios.scenario_loader import load_scenario, get_demand_multiplier
 
 logger = logging.getLogger(__name__)
@@ -45,27 +48,40 @@ class DefenceInventoryPolicy(Agent):
     _SURGE_THRESHOLD = 1.5  # Demand multiplier above which surge buffer kicks in
 
     def __init__(self, run_parameters):
-        self._rng = np.random.RandomState(run_parameters['simulation_seed'] + 2)
-        self._scenario_name = run_parameters.get('scenario', 'peacetime_baseline')
+        self._rng = np.random.RandomState(run_parameters["simulation_seed"] + 2)
+        self._scenario_name = run_parameters.get("scenario", "peacetime_baseline")
         self._scenario = load_scenario(self._scenario_name)
         self._safety_stock_weeks = self._DEFAULT_SAFETY_STOCK_WEEKS
+        self._runtime_context = run_parameters.get("runtime_context", {}) or {}
+        self._programme_items = get_runtime_programme_items(self._runtime_context)
+        self._factory_node_id = self._runtime_context.get(
+            "factory_node_id", "AlbionFactory"
+        )
 
     def get_name(self):
-        return 'buying'
+        return "buying"
 
     def reset(self, context, state):
-        self._asin_list = context.get('asin_list', [])
+        self._asin_list = context.get("asin_list", [])
+        if "factory_node_id" in context:
+            self._factory_node_id = context["factory_node_id"]
+        if "programme_items" in context and isinstance(
+            context["programme_items"], dict
+        ):
+            self._programme_items = context["programme_items"]
 
     def compute_actions(self, state):
         """Generate purchase orders based on inventory position vs safety stock."""
-        G = state['network']
-        current_week = state['clock']
+        G = state["network"]
+        current_week = state["clock"]
         demand_multiplier = get_demand_multiplier(self._scenario, current_week)
 
         actions = []
         for asin in self._asin_list:
-            item_config = DEFENCE_PROGRAMME_ITEMS.get(asin, {})
-            base_demand = item_config.get('base_weekly_demand', 10)
+            item_config = self._programme_items.get(
+                asin, DEFENCE_PROGRAMME_ITEMS.get(asin, {})
+            )
+            base_demand = item_config.get("base_weekly_demand", 10)
 
             # Current demand rate
             current_demand_rate = base_demand * demand_multiplier
@@ -86,15 +102,17 @@ class DefenceInventoryPolicy(Agent):
 
             if order_qty > 0:
                 # Determine if expedite is needed
-                expedite = inventory_position < (target_position * self._EXPEDITE_THRESHOLD_FRACTION)
+                expedite = inventory_position < (
+                    target_position * self._EXPEDITE_THRESHOLD_FRACTION
+                )
 
                 action = {
-                    'type': 'purchase_order',
-                    'asin': asin,
-                    'quantity': order_qty,
-                    'schedule': current_week,
-                    'destination': 'AlbionFactory',
-                    'expedite': expedite,
+                    "type": "purchase_order",
+                    "asin": asin,
+                    "quantity": order_qty,
+                    "schedule": current_week,
+                    "destination": self._factory_node_id,
+                    "expedite": expedite,
                 }
                 actions.append(action)
 

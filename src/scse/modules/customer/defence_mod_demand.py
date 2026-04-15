@@ -15,7 +15,10 @@ All demand parameters are fictional and for simulation purposes only.
 import logging
 import numpy as np
 from scse.api.module import Agent
-from scse.modules.selection.defence_programme_selection import DEFENCE_PROGRAMME_ITEMS
+from scse.modules.selection.defence_programme_selection import (
+    DEFENCE_PROGRAMME_ITEMS,
+    get_runtime_programme_items,
+)
 from scse.scenarios.scenario_loader import load_scenario, get_demand_multiplier
 
 logger = logging.getLogger(__name__)
@@ -34,38 +37,51 @@ class MODDemandGenerator(Agent):
     _DEMAND_NOISE_HIGH = 1.2
 
     def __init__(self, run_parameters):
-        self._rng = np.random.RandomState(run_parameters['simulation_seed'])
-        self._scenario_name = run_parameters.get('scenario', 'peacetime_baseline')
+        self._rng = np.random.RandomState(run_parameters["simulation_seed"])
+        self._scenario_name = run_parameters.get("scenario", "peacetime_baseline")
         self._scenario = load_scenario(self._scenario_name)
+        self._runtime_context = run_parameters.get("runtime_context", {}) or {}
+        self._programme_items = get_runtime_programme_items(self._runtime_context)
+        self._customer_node_id = self._runtime_context.get(
+            "customer_node_id", "MODDepot"
+        )
 
     def get_name(self):
-        return 'customer'
+        return "customer"
 
     def reset(self, context, state):
-        self._asin_list = context.get('asin_list', [])
+        self._asin_list = context.get("asin_list", [])
+        if "customer_node_id" in context:
+            self._customer_node_id = context["customer_node_id"]
+        if "programme_items" in context and isinstance(
+            context["programme_items"], dict
+        ):
+            self._programme_items = context["programme_items"]
 
     def compute_actions(self, state):
         """Generate weekly MOD demand orders for all programme items."""
-        current_week = state['clock']
+        current_week = state["clock"]
         demand_multiplier = get_demand_multiplier(self._scenario, current_week)
 
         actions = []
         for asin in self._asin_list:
-            item_config = DEFENCE_PROGRAMME_ITEMS.get(asin, {})
-            base_demand = item_config.get('base_weekly_demand', 10)
+            item_config = self._programme_items.get(
+                asin, DEFENCE_PROGRAMME_ITEMS.get(asin, {})
+            )
+            base_demand = item_config.get("base_weekly_demand", 10)
 
             # Apply surge multiplier and add noise
             noise = self._rng.uniform(self._DEMAND_NOISE_LOW, self._DEMAND_NOISE_HIGH)
             demand_qty = max(1, round(base_demand * demand_multiplier * noise))
 
             action = {
-                'type': 'customer_order',
-                'asin': asin,
-                'origin': None,
-                'destination': 'MODDepot',
-                'quantity': demand_qty,
-                'schedule': current_week,
-                'programme_priority': item_config.get('priority', 3),
+                "type": "customer_order",
+                "asin": asin,
+                "origin": None,
+                "destination": self._customer_node_id,
+                "quantity": demand_qty,
+                "schedule": current_week,
+                "programme_priority": item_config.get("priority", 3),
             }
             actions.append(action)
 

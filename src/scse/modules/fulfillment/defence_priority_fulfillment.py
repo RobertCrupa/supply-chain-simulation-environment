@@ -15,7 +15,10 @@ All parameters are fictional and for simulation purposes only.
 import logging
 from scse.api.module import Agent
 from scse.api.network import get_asin_inventory_in_node, set_asin_inventory_in_node
-from scse.modules.selection.defence_programme_selection import DEFENCE_PROGRAMME_ITEMS
+from scse.modules.selection.defence_programme_selection import (
+    DEFENCE_PROGRAMME_ITEMS,
+    get_runtime_programme_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,22 +40,33 @@ class DefencePriorityFulfillment(Agent):
     _PRODUCTION_HEADROOM_FACTOR = 2
 
     def __init__(self, run_parameters):
-        pass
+        runtime_context = run_parameters.get("runtime_context", {}) or {}
+        self._factory_node_id = runtime_context.get("factory_node_id", "AlbionFactory")
+        self._customer_node_id = runtime_context.get("customer_node_id", "MODDepot")
+        self._programme_items = get_runtime_programme_items(runtime_context)
 
     def get_name(self):
-        return 'fulfillment'
+        return "fulfillment"
 
     def reset(self, context, state):
-        self._asin_list = context.get('asin_list', [])
+        self._asin_list = context.get("asin_list", [])
+        if "factory_node_id" in context:
+            self._factory_node_id = context["factory_node_id"]
+        if "customer_node_id" in context:
+            self._customer_node_id = context["customer_node_id"]
+        if "programme_items" in context and isinstance(
+            context["programme_items"], dict
+        ):
+            self._programme_items = context["programme_items"]
 
     def compute_actions(self, state):
         """Produce goods and fulfil customer orders."""
-        G = state['network']
-        current_week = state['clock']
+        G = state["network"]
+        current_week = state["clock"]
 
         # --- Step 1: Production ---
-        factory_data = G.nodes['AlbionFactory']
-        weekly_capacity = factory_data.get('weekly_capacity', 60)
+        factory_data = G.nodes[self._factory_node_id]
+        weekly_capacity = factory_data.get("weekly_capacity", 60)
         produced_this_week = 0
 
         for asin in self._asin_list:
@@ -60,23 +74,25 @@ class DefencePriorityFulfillment(Agent):
                 break
 
             # Check component inventory available for production
-            component_inv = factory_data.get('component_inventory', {}).get(asin, 0)
+            component_inv = factory_data.get("component_inventory", {}).get(asin, 0)
             if component_inv <= 0:
                 continue
 
             # Produce as many as capacity and components allow
             can_produce = min(component_inv, weekly_capacity - produced_this_week)
             max_per_item = max(1, weekly_capacity // max(1, len(self._asin_list)))
-            produce_qty = min(can_produce, max_per_item * self._PRODUCTION_HEADROOM_FACTOR)
+            produce_qty = min(
+                can_produce, max_per_item * self._PRODUCTION_HEADROOM_FACTOR
+            )
 
             if produce_qty > 0:
                 # Consume components
-                factory_data['component_inventory'][asin] = component_inv - produce_qty
+                factory_data["component_inventory"][asin] = component_inv - produce_qty
                 # Add to finished goods inventory
-                current_fg = factory_data.get('inventory', {}).get(asin, 0)
-                if 'inventory' not in factory_data:
-                    factory_data['inventory'] = {}
-                factory_data['inventory'][asin] = current_fg + produce_qty
+                current_fg = factory_data.get("inventory", {}).get(asin, 0)
+                if "inventory" not in factory_data:
+                    factory_data["inventory"] = {}
+                factory_data["inventory"][asin] = current_fg + produce_qty
                 produced_this_week += produce_qty
 
                 logger.debug(
@@ -84,16 +100,19 @@ class DefencePriorityFulfillment(Agent):
                     f"(components used={produce_qty}, FG now={factory_data['inventory'][asin]})"
                 )
 
-        factory_data['production_this_week'] = produced_this_week
+        factory_data["production_this_week"] = produced_this_week
 
         # --- Step 2: Fulfillment ---
-        customer_orders = state.get('customer_orders', [])
+        customer_orders = state.get("customer_orders", [])
 
         # Sort by programme priority (lower number = higher priority)
         customer_orders.sort(
             key=lambda o: (
-                DEFENCE_PROGRAMME_ITEMS.get(o.get('asin', ''), {}).get('priority', 99),
-                o.get('schedule', 0)  # FIFO within same priority
+                self._programme_items.get(
+                    o.get("asin", ""),
+                    DEFENCE_PROGRAMME_ITEMS.get(o.get("asin", ""), {}),
+                ).get("priority", 99),
+                o.get("schedule", 0),  # FIFO within same priority
             )
         )
 
@@ -105,22 +124,22 @@ class DefencePriorityFulfillment(Agent):
             virtual_inventory[asin] = get_asin_inventory_in_node(factory_data, asin)
 
         for order in customer_orders:
-            asin = order['asin']
-            quantity = order['quantity']
-            destination = order.get('destination', 'MODDepot')
+            asin = order["asin"]
+            quantity = order["quantity"]
+            destination = order.get("destination", self._customer_node_id)
 
             available = virtual_inventory.get(asin, 0)
 
             if available >= quantity:
                 # Full fulfillment
                 action = {
-                    'type': 'outbound_shipment',
-                    'asin': asin,
-                    'quantity': quantity,
-                    'origin': 'AlbionFactory',
-                    'destination': destination,
-                    'schedule': current_week,
-                    'uuid': order.get('uuid', ''),
+                    "type": "outbound_shipment",
+                    "asin": asin,
+                    "quantity": quantity,
+                    "origin": self._factory_node_id,
+                    "destination": destination,
+                    "schedule": current_week,
+                    "uuid": order.get("uuid", ""),
                 }
                 actions.append(action)
                 virtual_inventory[asin] = available - quantity
@@ -131,19 +150,19 @@ class DefencePriorityFulfillment(Agent):
             elif available > 0:
                 # Partial fulfillment — ship what's available
                 action = {
-                    'type': 'outbound_shipment',
-                    'asin': asin,
-                    'quantity': available,
-                    'origin': 'AlbionFactory',
-                    'destination': destination,
-                    'schedule': current_week,
-                    'uuid': order.get('uuid', ''),
+                    "type": "outbound_shipment",
+                    "asin": asin,
+                    "quantity": available,
+                    "origin": self._factory_node_id,
+                    "destination": destination,
+                    "schedule": current_week,
+                    "uuid": order.get("uuid", ""),
                 }
                 actions.append(action)
                 virtual_inventory[asin] = 0
 
                 # Reduce order quantity by amount shipped (remainder stays as backlog)
-                order['quantity'] = quantity - available
+                order["quantity"] = quantity - available
 
                 logger.debug(
                     f"Week {current_week}: Partial fulfillment {asin} "

@@ -43,12 +43,14 @@ class DefenceSurgeMetrics:
     _EXPEDITE_COST_PREMIUM = 0.5  # 50% premium on expedited units
     _HOLDING_COST_PER_UNIT_WEEK = 100  # £ per unit per week (proxy)
     _UNIT_FULFILMENT_REWARD = 10  # reward per unit fulfilled
-    _UNIT_PROCUREMENT_COST = 5   # cost per unit procured
+    _UNIT_PROCUREMENT_COST = 5  # cost per unit procured
 
     def __init__(self, run_parameters):
-        self._scenario_name = run_parameters.get('scenario', 'peacetime_baseline')
-        self._output_dir = run_parameters.get('output_dir', 'output')
-        self._time_horizon = run_parameters.get('time_horizon', 52)
+        self._scenario_name = run_parameters.get("scenario", "peacetime_baseline")
+        self._output_dir = run_parameters.get("output_dir", "output")
+        self._time_horizon = run_parameters.get("time_horizon", 52)
+        runtime_context = run_parameters.get("runtime_context", {}) or {}
+        self._factory_node_id = runtime_context.get("factory_node_id", "AlbionFactory")
 
         # Per-timestep accumulators (reset each advance_time)
         self._timestep_fulfilled = 0
@@ -68,7 +70,8 @@ class DefenceSurgeMetrics:
     def reset(self, context, state):
         """Reset metrics state for a new episode."""
         self._context = {}
-        self._context['asin_list'] = context.get('asin_list', [])
+        self._context["asin_list"] = context.get("asin_list", [])
+        self._factory_node_id = context.get("factory_node_id", self._factory_node_id)
         self._timestep_fulfilled = 0
         self._timestep_demanded = 0
         self._timestep_expedite_orders = 0
@@ -86,20 +89,20 @@ class DefenceSurgeMetrics:
         For outbound_shipment / inbound_shipment: returns scalar reward.
         For advance_time: returns dict with 'total' and 'by_asin'.
         """
-        action_type = action['type']
-        quantity = action.get('quantity') or 0
-        asin = action.get('asin', '')
+        action_type = action["type"]
+        quantity = action.get("quantity") or 0
+        asin = action.get("asin", "")
 
-        if action_type == 'outbound_shipment':
+        if action_type == "outbound_shipment":
             self._timestep_fulfilled += quantity
             self._total_fulfilled += quantity
             return self._UNIT_FULFILMENT_REWARD * quantity
 
-        elif action_type == 'inbound_shipment':
+        elif action_type == "inbound_shipment":
             cost = self._UNIT_PROCUREMENT_COST * quantity
-            is_expedite = action.get('expedite', False)
+            is_expedite = action.get("expedite", False)
             if is_expedite:
-                cost *= (1 + self._EXPEDITE_COST_PREMIUM)
+                cost *= 1 + self._EXPEDITE_COST_PREMIUM
                 self._timestep_expedite_orders += 1
                 self._timestep_expedite_units += quantity
                 self._total_expedite_orders += 1
@@ -107,7 +110,7 @@ class DefenceSurgeMetrics:
             self._timestep_inbound_cost += cost
             return -cost
 
-        elif action_type == 'advance_time':
+        elif action_type == "advance_time":
             return self._advance_time_reward(state)
 
         else:
@@ -116,25 +119,25 @@ class DefenceSurgeMetrics:
 
     def _advance_time_reward(self, state):
         """Compute end-of-timestep reward and log metrics."""
-        G = state['network']
-        reward_by_asin = {k: 0 for k in self._context.get('asin_list', [])}
+        G = state["network"]
+        reward_by_asin = {k: 0 for k in self._context.get("asin_list", [])}
         total_reward = 0.0
 
         # Compute inventory and backlog
-        factory_data = G.nodes.get('AlbionFactory', {})
+        factory_data = G.nodes.get(self._factory_node_id, {})
         total_fg_inv = 0
         total_comp_inv = 0
         total_backlog = 0
 
-        for asin in self._context.get('asin_list', []):
-            fg = factory_data.get('inventory', {}).get(asin, 0)
+        for asin in self._context.get("asin_list", []):
+            fg = factory_data.get("inventory", {}).get(asin, 0)
             total_fg_inv += fg
-            comp = factory_data.get('component_inventory', {}).get(asin, 0)
+            comp = factory_data.get("component_inventory", {}).get(asin, 0)
             total_comp_inv += comp
 
         # Current backlog = unfulfilled customer orders remaining in state
-        for order in state.get('customer_orders', []):
-            total_backlog += order.get('quantity', 0)
+        for order in state.get("customer_orders", []):
+            total_backlog += order.get("quantity", 0)
 
         # Total demand = everything fulfilled so far + current outstanding backlog
         # This is correct because fulfilled orders are removed from customer_orders
@@ -142,35 +145,40 @@ class DefenceSurgeMetrics:
         self._total_demanded = self._total_fulfilled + total_backlog
 
         # Holding cost
-        holding_cost = (total_fg_inv + total_comp_inv) * self._HOLDING_COST_PER_UNIT_WEEK
+        holding_cost = (
+            total_fg_inv + total_comp_inv
+        ) * self._HOLDING_COST_PER_UNIT_WEEK
         total_reward -= holding_cost
 
         # Production utilisation
-        production = factory_data.get('production_this_week', 0)
-        capacity = factory_data.get('weekly_capacity', 60)
+        production = factory_data.get("production_this_week", 0)
+        capacity = factory_data.get("weekly_capacity", 60)
         utilisation = production / capacity if capacity > 0 else 0
 
         # Cumulative fill rate
         fill_rate = (
             self._total_fulfilled / self._total_demanded
-            if self._total_demanded > 0 else 1.0
+            if self._total_demanded > 0
+            else 1.0
         )
 
         # Log this timestep
-        self._log.append({
-            'week': state.get('clock', 0),
-            'total_demanded': self._total_demanded,
-            'total_fulfilled': self._total_fulfilled,
-            'fill_rate': round(fill_rate, 4),
-            'backlog': total_backlog,
-            'fg_inventory': total_fg_inv,
-            'component_inventory': total_comp_inv,
-            'production': production,
-            'utilisation': round(utilisation, 4),
-            'expedite_orders_cumulative': self._total_expedite_orders,
-            'expedite_units_cumulative': self._total_expedite_units,
-            'holding_cost': round(holding_cost, 2),
-        })
+        self._log.append(
+            {
+                "week": state.get("clock", 0),
+                "total_demanded": self._total_demanded,
+                "total_fulfilled": self._total_fulfilled,
+                "fill_rate": round(fill_rate, 4),
+                "backlog": total_backlog,
+                "fg_inventory": total_fg_inv,
+                "component_inventory": total_comp_inv,
+                "production": production,
+                "utilisation": round(utilisation, 4),
+                "expedite_orders_cumulative": self._total_expedite_orders,
+                "expedite_units_cumulative": self._total_expedite_units,
+                "holding_cost": round(holding_cost, 2),
+            }
+        )
 
         # Reset per-timestep accumulators
         self._timestep_fulfilled = 0
@@ -179,7 +187,7 @@ class DefenceSurgeMetrics:
         self._timestep_expedite_units = 0
         self._timestep_inbound_cost = 0
 
-        return {'total': total_reward, 'by_asin': reward_by_asin}
+        return {"total": total_reward, "by_asin": reward_by_asin}
 
     def write_output(self):
         """Write metrics CSV and summary text to the output directory."""
@@ -187,18 +195,18 @@ class DefenceSurgeMetrics:
         os.makedirs(scenario_dir, exist_ok=True)
 
         # Write detailed CSV log
-        csv_path = os.path.join(scenario_dir, 'metrics_log.csv')
+        csv_path = os.path.join(scenario_dir, "metrics_log.csv")
         if self._log:
             fieldnames = list(self._log[0].keys())
-            with open(csv_path, 'w', newline='') as f:
+            with open(csv_path, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(self._log)
             logger.info(f"Metrics CSV written to {csv_path}")
 
         # Write summary
-        summary_path = os.path.join(scenario_dir, 'summary.txt')
-        with open(summary_path, 'w') as f:
+        summary_path = os.path.join(scenario_dir, "summary.txt")
+        with open(summary_path, "w") as f:
             f.write(f"Defence Surge Simulation — {self._scenario_name}\n")
             f.write("=" * 60 + "\n\n")
 
@@ -210,20 +218,28 @@ class DefenceSurgeMetrics:
                 f.write(f"Final fill rate:        {last['fill_rate']:.1%}\n")
                 f.write(f"Final backlog:          {last['backlog']} units\n")
                 f.write(f"Final FG inventory:     {last['fg_inventory']} units\n")
-                f.write(f"Final component inv:    {last['component_inventory']} units\n")
-                f.write(f"Expedite orders (cum):  {last['expedite_orders_cumulative']}\n")
-                f.write(f"Expedite units (cum):   {last['expedite_units_cumulative']}\n\n")
+                f.write(
+                    f"Final component inv:    {last['component_inventory']} units\n"
+                )
+                f.write(
+                    f"Expedite orders (cum):  {last['expedite_orders_cumulative']}\n"
+                )
+                f.write(
+                    f"Expedite units (cum):   {last['expedite_units_cumulative']}\n\n"
+                )
 
                 # Peak metrics
-                peak_backlog = max(row['backlog'] for row in self._log)
-                min_fill_rate = min(row['fill_rate'] for row in self._log)
-                peak_utilisation = max(row['utilisation'] for row in self._log)
+                peak_backlog = max(row["backlog"] for row in self._log)
+                min_fill_rate = min(row["fill_rate"] for row in self._log)
+                peak_utilisation = max(row["utilisation"] for row in self._log)
                 f.write(f"Peak backlog:           {peak_backlog} units\n")
                 f.write(f"Minimum fill rate:      {min_fill_rate:.1%}\n")
                 f.write(f"Peak utilisation:       {peak_utilisation:.1%}\n")
 
             f.write("\n" + "=" * 60 + "\n")
-            f.write("All values are from a fictional simulation. Not operational data.\n")
+            f.write(
+                "All values are from a fictional simulation. Not operational data.\n"
+            )
 
         logger.info(f"Summary written to {summary_path}")
 
